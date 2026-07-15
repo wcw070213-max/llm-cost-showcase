@@ -1,0 +1,72 @@
+# Secrets and local environment
+.env
+.env.*
+.envrc
+.secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Product source and implementation files must never enter this showcase
+*.py
+*.pyc
+*.ts
+*.tsx
+*.js
+*.jsx
+*.mjs
+*.cjs
+*.sql
+*.map
+backend/
+frontend/
+sdk/
+scripts/
+tests/
+
+# Databases, local data, and runtime output
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+.runtime/
+.capture/
+.tmp/
+tmp/
+temp/
+logs/
+*.log
+*.log.*
+*.pid
+
+# Dependencies, caches, and build output
+.venv/
+venv/
+node_modules/
+dist/
+build/
+out/
+.next/
+coverage/
+__pycache__/
+.pytest_cache/
+
+# Archives and accidental source-repository documents
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+PROJECT_STATE.md
+ROADMAP.md
+
+# Editor, operating-system, and local assistant metadata
+.vscode/
+.idea/
+.agents/
+.codex/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~

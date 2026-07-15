@@ -1,0 +1,17 @@
+{
+  "data_type": "synthetic",
+  "analysis_status": "complete",
+  "optimization_category": "model_and_prompt_efficiency",
+  "baseline_cost_usd": 128.4,
+  "savings_range_usd": {
+    "evidence_type": "estimated",
+    "minimum": 24.0,
+    "maximum": 38.0
+  },
+  "quality_guardrail_status": "passed",
+  "readiness_status": "ready_for_controlled_activation",
+  "activation_status": "not_activated",
+  "attribution_type": "estimated",
+  "evidence_status": "review_ready",
+  "reported_at": "2026-07-15T12:00:00Z"
+}
