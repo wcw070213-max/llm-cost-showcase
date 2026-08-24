@@ -1,4 +1,4 @@
-name: Math exact SCIP VIPR regression
+name: Math exact SCIP VIPR original-model regression
 
 on:
   pull_request:
@@ -19,7 +19,7 @@ env:
 jobs:
   exact-regression:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -61,7 +61,7 @@ jobs:
           test -n "$SCIP_BIN"
           echo "$SCIP_BIN" > scip_binary.txt
           "$SCIP_BIN" -v > exact_results/scip_version.txt 2>&1 || true
-          "$SCIP_BIN" -c 'set exact enable TRUE' -c 'set certificate filename /tmp/scip-preflight.vipr' -c quit > exact_results/scip_preflight.txt 2>&1
+          "$SCIP_BIN" -c 'set exact enable TRUE' -c 'set presolving emphasis off' -c 'set separating emphasis off' -c 'set certificate filename /tmp/scip-preflight.vipr' -c quit > exact_results/scip_preflight.txt 2>&1
           if grep -Eiq 'unknown parameter|invalid parameter|not a valid parameter' exact_results/scip_preflight.txt; then
             cat exact_results/scip_preflight.txt
             exit 1
@@ -78,22 +78,27 @@ jobs:
           test "$(cat exact_results/vipr_commit.txt)" = "$VIPR_COMMIT"
           sha256sum vipr/build/viprchk > exact_results/viprchk_sha256.txt
 
-      - name: Run exact SCIP and cold-check emitted VIPR certificate
+      - name: Run exact SCIP/VIPR proof for the original model
         run: |
           SCIP_BIN="$(cat scip_binary.txt)"
           mkdir -p exact_results/model_352
           cat > exact_results/model_352/scip.set <<'EOF'
           set exact enable TRUE
-          set separating gomory freq -1
+          set presolving emphasis off
+          set separating emphasis off
           set conflict enable FALSE
-          set limits time 300
+          set limits time 600
           set certificate filename exact_results/model_352/proof.vipr
           read exact_models/model_352.lp
           optimize
           display statistics
           quit
           EOF
-          "$SCIP_BIN" -b exact_results/model_352/scip.set > exact_results/model_352/scip.stdout 2> exact_results/model_352/scip.stderr
+          set +e
+          timeout 750 "$SCIP_BIN" -b exact_results/model_352/scip.set > exact_results/model_352/scip.stdout 2> exact_results/model_352/scip.stderr
+          rc=$?
+          set -e
+          echo "$rc" > exact_results/model_352/scip_returncode.txt
           grep -Eiq 'problem is solved \[infeasible\]|SCIP Status[[:space:]]*:[[:space:]]*problem is solved \[infeasible\]' exact_results/model_352/scip.stdout
           if test -s exact_results/model_352/proof.vipr; then
             PROOF=exact_results/model_352/proof.vipr
@@ -104,31 +109,38 @@ jobs:
             exit 1
           fi
           echo "$PROOF" > exact_results/model_352/proof_path.txt
+          grep -Eq '^DER [1-9][0-9]*$' "$PROOF"
+          if grep -q '^RTP range -inf inf$' "$PROOF"; then
+            echo 'Refusing tautological VIPR target range' >&2
+            exit 1
+          fi
           vipr/build/viprchk "$PROOF" > exact_results/model_352/viprchk.stdout 2> exact_results/model_352/viprchk.stderr
           echo CERTIFIED_UNSAT > exact_results/model_352/mathematical_status.txt
           sha256sum exact_results/model_352/* > exact_results/model_352/SHA256SUMS
-          echo MODEL_352_EXACT_SCIP_VIPR_REGRESSION_PASS
+          echo MODEL_352_ORIGINAL_EXACT_SCIP_VIPR_REGRESSION_PASS
 
       - name: Create summary
         if: always()
         run: |
           python3 - <<'PY'
-          import hashlib,json
+          import hashlib,json,re
           from pathlib import Path
           def sh(p): return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
           p1=Path('exact_results/model_352/proof.vipr')
           p2=Path('exact_results/model_352/proof.vipr_ori')
           proof=p1 if p1.exists() else p2
-          out={'schema':'rank5_exact_scip_vipr_model352_regression_v2','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('exact_models/model_352.lp')),'proof_file':str(proof) if proof.exists() else None,'proof_exists':proof.exists(),'proof_sha256':sh(proof),'vipr_commit':Path('exact_results/vipr_commit.txt').read_text().strip() if Path('exact_results/vipr_commit.txt').exists() else None,'checker_returncode':0 if Path('exact_results/model_352/mathematical_status.txt').exists() else None,'status':Path('exact_results/model_352/mathematical_status.txt').read_text().strip() if Path('exact_results/model_352/mathematical_status.txt').exists() else 'NOT_REACHED','checker_stdout_sha256':sh(Path('exact_results/model_352/viprchk.stdout'))}
+          txt=proof.read_text(errors='replace') if proof.exists() else ''
+          m=re.search(r'^DER\s+(\d+)\s*$',txt,re.M)
+          out={'schema':'rank5_exact_scip_vipr_model352_original_regression_v1','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('exact_models/model_352.lp')),'presolving_disabled':True,'separation_disabled':True,'proof_file':str(proof) if proof.exists() else None,'proof_exists':proof.exists(),'proof_sha256':sh(proof),'proof_derivations':int(m.group(1)) if m else None,'proof_target_tautological':bool(re.search(r'^RTP range -inf inf$',txt,re.M)),'vipr_commit':Path('exact_results/vipr_commit.txt').read_text().strip() if Path('exact_results/vipr_commit.txt').exists() else None,'status':Path('exact_results/model_352/mathematical_status.txt').read_text().strip() if Path('exact_results/model_352/mathematical_status.txt').exists() else 'NOT_REACHED','checker_stdout_sha256':sh(Path('exact_results/model_352/viprchk.stdout'))}
           Path('exact_results/summary.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
           PY
           find exact_results -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > exact_results/SHA256SUMS
 
-      - name: Upload exact regression artifact
+      - name: Upload original-model exact regression artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RANK5_EXACT_SCIP_VIPR_MODEL352_REGRESSION_V2
+          name: RANK5_EXACT_SCIP_VIPR_MODEL352_ORIGINAL_REGRESSION_V1
           path: exact_results
           compression-level: 0
           retention-days: 30
