@@ -1,0 +1,35 @@
+name: Export SCIP 10.0.3 release v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-scip-release-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SCIP_URL: https://github.com/scipopt/scip/releases/download/v10.0.3/scipoptsuite-10.0.3-glibc2_28-amd64.tgz
+  SCIP_TGZ_SHA256: ddbb7129bdb83f8f70ed26391d206fd1658139e44c7c7fd7d73a1e4cefbca94f
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and hash official release tarball
+        run: |
+          mkdir export
+          curl -L --fail --retry 3 -o export/scipoptsuite-10.0.3-glibc2_28-amd64.tgz "$SCIP_URL"
+          test "$(sha256sum export/scipoptsuite-10.0.3-glibc2_28-amd64.tgz | cut -d' ' -f1)" = "$SCIP_TGZ_SHA256"
+          sha256sum export/scipoptsuite-10.0.3-glibc2_28-amd64.tgz > export/SHA256SUMS
+          echo SCIP_RELEASE_TARBALL_EXPORT_PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCIP_10_0_3_RELEASE_TARBALL_V2
+          path: export
+          compression-level: 0
+          retention-days: 30
