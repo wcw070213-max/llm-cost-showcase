@@ -1,0 +1,26 @@
+name: Math compute backend smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/math-compute-smoke.yml'
+      - '.math_compute_trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm runner and public release access
+        run: |
+          uname -a
+          python3 --version
+          curl -L --fail --retry 3 -o /tmp/scip.tgz https://github.com/scipopt/scip/releases/download/v10.0.3/scipoptsuite-10.0.3-glibc2_28-amd64.tgz
+          test "$(sha256sum /tmp/scip.tgz | cut -d' ' -f1)" = "ddbb7129bdb83f8f70ed26391d206fd1658139e44c7c7fd7d73a1e4cefbca94f"
+          tar -tzf /tmp/scip.tgz | head -20
+          echo MATH_COMPUTE_BACKEND_SMOKE_PASS
