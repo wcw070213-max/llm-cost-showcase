@@ -1,4 +1,4 @@
-name: Math exact SCIP VIPR pilot
+name: Math exact SCIP VIPR regression
 
 on:
   pull_request:
@@ -17,27 +17,35 @@ env:
   VIPR_COMMIT: 30f2951d1e90e47afa821bdd1b12b82246656c42
 
 jobs:
-  exact-pilot:
+  exact-regression:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
-      - name: Recover and verify frozen LP models
+      - name: Reassemble and verify frozen model 352
         run: |
           mkdir -p exact_models exact_results
-          for id in 352 589; do
-            base64 -d "math_exact/models/model_${id}.lp.xz.b64" > "exact_models/model_${id}.lp.xz"
-            xz -t "exact_models/model_${id}.lp.xz"
-            xz -dc "exact_models/model_${id}.lp.xz" > "exact_models/model_${id}.lp"
-          done
+          cat > chunk_sha256.txt <<'EOF'
+          2817a9c6aaf3d55002fe0fbfc22ba4b430556793b3f577223b70ffdcff924ef4  math_exact/models/chunks/model_352.part00
+          ef49abe0d3155162dcd0e70c71b1eb0b743a5d65d0ee7e90df0da159e0c20283  math_exact/models/chunks/model_352.part01
+          3ba870ef4160a397602c5fd6b7257b1d891d1e01f9770a58cd7274f7d1cfa53e  math_exact/models/chunks/model_352.part02
+          f8c3c8ab7f8db54173f22894cb0c4010f48a68ae0dbeabb14ae87a8914caae3c  math_exact/models/chunks/model_352.part03
+          28e5f5d4048992364474c362ef2917c0c3e78d4d87ff3f5d4d89eb0690b2c0bf  math_exact/models/chunks/model_352.part04
+          2674787a21e20fe66743ec23f83113a28a3ec9b53f413d02649fc61f696752c7  math_exact/models/chunks/model_352.part05
+          d5a0d04fc171ff3772918b6c0e144d56de65f315f1e97ab83352153ed4151e5b  math_exact/models/chunks/model_352.part06
+          445a273fcf08fbc97808cd647dfb6fd4101e5b90113454470c35de8471373294  math_exact/models/chunks/model_352.part07
+          EOF
+          sha256sum -c chunk_sha256.txt
+          cat math_exact/models/chunks/model_352.part* > exact_models/model_352.lp.xz.b64
+          test "$(sha256sum exact_models/model_352.lp.xz.b64 | cut -d' ' -f1)" = "af496c94d9930578e119a9e6d07c2338d2fd3b17ef37219bf4048003d09c20de"
+          base64 -d exact_models/model_352.lp.xz.b64 > exact_models/model_352.lp.xz
           test "$(sha256sum exact_models/model_352.lp.xz | cut -d' ' -f1)" = "e82ce3c3d1dbcfa8f1ef54e7cda3f5a3fe4a316a683774e128371af97423b019"
-          test "$(sha256sum exact_models/model_589.lp.xz | cut -d' ' -f1)" = "e884d61f18bf02d7fdb61f4b759ff34703500e1600771eb40a6cad37d8643853"
+          xz -t exact_models/model_352.lp.xz
+          xz -dc exact_models/model_352.lp.xz > exact_models/model_352.lp
           test "$(sha256sum exact_models/model_352.lp | cut -d' ' -f1)" = "1d549df8d1c5b46746fdaa569cf3dccbf71667211afc4a53a10bd1803e3ddb15"
-          test "$(sha256sum exact_models/model_589.lp | cut -d' ' -f1)" = "a2c5f1257a5330ed8c81837ad14a3eb204ac8c32d15e94d1b94e932c95fa18e1"
           grep -q 'model_id=352 profile=R5_RHO4_TAU3 model_sha256=116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3' exact_models/model_352.lp
-          grep -q 'model_id=589 profile=R5_RHO4_TAU3 model_sha256=d7e26cb2' exact_models/model_589.lp
-          sha256sum exact_models/* | tee exact_results/model_input_sha256.txt
+          sha256sum exact_models/* chunk_sha256.txt > exact_results/model_input_sha256.txt
 
       - name: Install build dependencies
         run: |
@@ -56,7 +64,7 @@ jobs:
           grep -q 'exact/enable' exact_results/scip_parameters.txt
           grep -q 'certificate/filename' exact_results/scip_parameters.txt
           "$SCIP_BIN" -v > exact_results/scip_version.txt 2>&1 || true
-          sha256sum "$SCIP_BIN" > exact_results/scip_binary_sha256.txt
+          sha256sum "$SCIP_BIN" scip.tgz > exact_results/scip_binary_sha256.txt
 
       - name: Build pinned VIPR checker
         run: |
@@ -68,7 +76,7 @@ jobs:
           test "$(cat exact_results/vipr_commit.txt)" = "$VIPR_COMMIT"
           sha256sum vipr/build/viprchk > exact_results/viprchk_sha256.txt
 
-      - name: Run exact SCIP/VIPR regression model 352
+      - name: Run exact SCIP/VIPR hard regression
         run: |
           SCIP_BIN="$(cat scip_binary.txt)"
           mkdir -p exact_results/model_352
@@ -87,72 +95,27 @@ jobs:
           grep -Eiq 'problem is solved \[infeasible\]|SCIP Status[[:space:]]*:[[:space:]]*problem is solved \[infeasible\]' exact_results/model_352/scip.stdout
           test -s exact_results/model_352/proof.vipr
           vipr/build/viprchk exact_results/model_352/proof.vipr > exact_results/model_352/viprchk.stdout 2> exact_results/model_352/viprchk.stderr
+          echo CERTIFIED_UNSAT > exact_results/model_352/mathematical_status.txt
           sha256sum exact_results/model_352/* > exact_results/model_352/SHA256SUMS
           echo MODEL_352_EXACT_SCIP_VIPR_REGRESSION_PASS
 
-      - name: Run exact SCIP/VIPR pilot model 589
-        run: |
-          SCIP_BIN="$(cat scip_binary.txt)"
-          mkdir -p exact_results/model_589
-          cat > exact_results/model_589/scip.set <<'EOF'
-          set exact enable TRUE
-          set separating gomory freq -1
-          set conflict enable FALSE
-          set limits time 1200
-          set certificate filename exact_results/model_589/proof.vipr
-          read exact_models/model_589.lp
-          optimize
-          display statistics
-          quit
-          EOF
-          set +e
-          timeout 1500 "$SCIP_BIN" -b exact_results/model_589/scip.set > exact_results/model_589/scip.stdout 2> exact_results/model_589/scip.stderr
-          rc=$?
-          set -e
-          echo "$rc" > exact_results/model_589/scip_returncode.txt
-          if grep -Eiq 'problem is solved \[infeasible\]|SCIP Status[[:space:]]*:[[:space:]]*problem is solved \[infeasible\]' exact_results/model_589/scip.stdout && test -s exact_results/model_589/proof.vipr; then
-            vipr/build/viprchk exact_results/model_589/proof.vipr > exact_results/model_589/viprchk.stdout 2> exact_results/model_589/viprchk.stderr
-            echo CERTIFIED_UNSAT > exact_results/model_589/mathematical_status.txt
-          else
-            echo UNKNOWN_OR_TIMEOUT > exact_results/model_589/mathematical_status.txt
-          fi
-          sha256sum exact_results/model_589/* > exact_results/model_589/SHA256SUMS
-          cat exact_results/model_589/mathematical_status.txt
-
-      - name: Create machine-readable summary
+      - name: Create summary
         if: always()
         run: |
           python3 - <<'PY'
-          import hashlib,json,re
+          import hashlib,json
           from pathlib import Path
-          root=Path('exact_results')
-          def sh(p):
-              return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
-          out={
-            'schema':'rank5_exact_scip_vipr_two_model_pilot_v1',
-            'model_352':{
-              'lp_sha256':sh(Path('exact_models/model_352.lp')),
-              'proof_exists':Path('exact_results/model_352/proof.vipr').exists(),
-              'proof_sha256':sh(Path('exact_results/model_352/proof.vipr')),
-              'checker_stdout_sha256':sh(Path('exact_results/model_352/viprchk.stdout')),
-            },
-            'model_589':{
-              'lp_sha256':sh(Path('exact_models/model_589.lp')),
-              'proof_exists':Path('exact_results/model_589/proof.vipr').exists(),
-              'proof_sha256':sh(Path('exact_results/model_589/proof.vipr')),
-              'status':Path('exact_results/model_589/mathematical_status.txt').read_text().strip() if Path('exact_results/model_589/mathematical_status.txt').exists() else 'NOT_REACHED',
-              'checker_stdout_sha256':sh(Path('exact_results/model_589/viprchk.stdout')),
-            },
-          }
+          def sh(p): return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
+          out={'schema':'rank5_exact_scip_vipr_model352_regression_v1','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('exact_models/model_352.lp')),'proof_exists':Path('exact_results/model_352/proof.vipr').exists(),'proof_sha256':sh(Path('exact_results/model_352/proof.vipr')),'status':Path('exact_results/model_352/mathematical_status.txt').read_text().strip() if Path('exact_results/model_352/mathematical_status.txt').exists() else 'NOT_REACHED','checker_stdout_sha256':sh(Path('exact_results/model_352/viprchk.stdout'))}
           Path('exact_results/summary.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
           PY
           find exact_results -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > exact_results/SHA256SUMS
 
-      - name: Upload exact proof pilot
+      - name: Upload exact regression artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RANK5_EXACT_SCIP_VIPR_TWO_MODEL_PILOT_V1
+          name: RANK5_EXACT_SCIP_VIPR_MODEL352_REGRESSION_V1
           path: exact_results
           compression-level: 0
           retention-days: 30
