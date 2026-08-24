@@ -1,0 +1,109 @@
+name: Math VIPR cold replay model352
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/math-vipr-replay-model352.yml'
+      - 'math_exact/VIPR_REPLAY_TRIGGER.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_RUN_ID: 32765435670
+  VIPR_COMMIT: 30f2951d1e90e47afa821bdd1b12b82246656c42
+
+jobs:
+  cold-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reassemble frozen model 352 input
+        run: |
+          mkdir -p replay/model_352
+          cat > chunk_sha256.txt <<'EOF'
+          2817a9c6aaf3d55002fe0fbfc22ba4b430556793b3f577223b70ffdcff924ef4  math_exact/models/chunks/model_352.part00
+          ef49abe0d3155162dcd0e70c71b1eb0b743a5d65d0ee7e90df0da159e0c20283  math_exact/models/chunks/model_352.part01
+          3ba870ef4160a397602c5fd6b7257b1d891d1e01f9770a58cd7274f7d1cfa53e  math_exact/models/chunks/model_352.part02
+          f8c3c8ab7f8db54173f22894cb0c4010f48a68ae0dbeabb14ae87a8914caae3c  math_exact/models/chunks/model_352.part03
+          28e5f5d4048992364474c362ef2917c0c3e78d4d87ff3f5d4d89eb0690b2c0bf  math_exact/models/chunks/model_352.part04
+          2674787a21e20fe66743ec23f83113a28a3ec9b53f413d02649fc61f696752c7  math_exact/models/chunks/model_352.part05
+          d5a0d04fc171ff3772918b6c0e144d56de65f315f1e97ab83352153ed4151e5b  math_exact/models/chunks/model_352.part06
+          445a273fcf08fbc97808cd647dfb6fd4101e5b90113454470c35de8471373294  math_exact/models/chunks/model_352.part07
+          EOF
+          sha256sum -c chunk_sha256.txt
+          cat math_exact/models/chunks/model_352.part* > replay/model_352/model.lp.xz.b64
+          test "$(sha256sum replay/model_352/model.lp.xz.b64 | cut -d' ' -f1)" = "af496c94d9930578e119a9e6d07c2338d2fd3b17ef37219bf4048003d09c20de"
+          base64 -d replay/model_352/model.lp.xz.b64 > replay/model_352/model.lp.xz
+          test "$(sha256sum replay/model_352/model.lp.xz | cut -d' ' -f1)" = "e82ce3c3d1dbcfa8f1ef54e7cda3f5a3fe4a316a683774e128371af97423b019"
+          xz -dc replay/model_352/model.lp.xz > replay/model_352/model.lp
+          test "$(sha256sum replay/model_352/model.lp | cut -d' ' -f1)" = "1d549df8d1c5b46746fdaa569cf3dccbf71667211afc4a53a10bd1803e3ddb15"
+
+      - name: Download prior exact SCIP raw certificate
+        uses: actions/download-artifact@v4
+        with:
+          name: RANK5_EXACT_SCIP_VIPR_MODEL352_REGRESSION_V1
+          path: prior
+          github-token: ${{ github.token }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Verify raw certificate identity
+        run: |
+          test -s prior/model_352/proof.vipr_ori
+          test "$(sha256sum prior/model_352/proof.vipr_ori | cut -d' ' -f1)" = "56c7c2887c2121511b86d9b426d1a405dadbb139193d85baa2d7924beeb41ef3"
+          cp prior/model_352/proof.vipr_ori replay/model_352/proof.vipr_ori
+          cp prior/model_352/scip.stdout replay/model_352/scip.stdout
+          grep -q 'SCIP Status        : problem is solved \[infeasible\]' replay/model_352/scip.stdout
+          grep -q 'closing certificate file' replay/model_352/scip.stdout
+
+      - name: Build pinned VIPR checker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libgmp-dev
+          git clone https://github.com/scipopt/vipr.git vipr
+          git -C vipr checkout "$VIPR_COMMIT"
+          cmake -S vipr/code -B vipr/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DVIPRCOMP=OFF
+          cmake --build vipr/build --target viprchk -j 2
+          git -C vipr rev-parse HEAD > replay/vipr_commit.txt
+          test "$(cat replay/vipr_commit.txt)" = "$VIPR_COMMIT"
+          sha256sum vipr/build/viprchk > replay/viprchk_sha256.txt
+
+      - name: Cold replay raw VIPR certificate
+        run: |
+          set +e
+          vipr/build/viprchk replay/model_352/proof.vipr_ori > replay/model_352/viprchk.stdout 2> replay/model_352/viprchk.stderr
+          rc=$?
+          set -e
+          echo "$rc" > replay/model_352/viprchk_returncode.txt
+          cat replay/model_352/viprchk.stdout
+          cat replay/model_352/viprchk.stderr
+          test "$rc" = 0
+          echo CERTIFIED_UNSAT > replay/model_352/mathematical_status.txt
+          sha256sum replay/model_352/* > replay/model_352/SHA256SUMS
+          echo MODEL_352_EXACT_SCIP_VIPR_COLD_REPLAY_PASS
+
+      - name: Create replay summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          def sh(p): return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
+          d={'schema':'rank5_model352_exact_scip_vipr_cold_replay_v1','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('replay/model_352/model.lp')),'proof_sha256':sh(Path('replay/model_352/proof.vipr_ori')),'vipr_commit':Path('replay/vipr_commit.txt').read_text().strip() if Path('replay/vipr_commit.txt').exists() else None,'checker_returncode':int(Path('replay/model_352/viprchk_returncode.txt').read_text()) if Path('replay/model_352/viprchk_returncode.txt').exists() else None,'status':Path('replay/model_352/mathematical_status.txt').read_text().strip() if Path('replay/model_352/mathematical_status.txt').exists() else 'NOT_REACHED'}
+          Path('replay/summary.json').write_text(json.dumps(d,indent=2,sort_keys=True)+'\n')
+          PY
+          find replay -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > replay/SHA256SUMS
+
+      - name: Upload cold replay artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RANK5_MODEL352_EXACT_SCIP_VIPR_COLD_REPLAY_V1
+          path: replay
+          compression-level: 0
+          retention-days: 30
