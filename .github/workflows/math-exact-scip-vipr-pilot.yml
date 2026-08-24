@@ -52,7 +52,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build libgmp-dev libboost-all-dev zlib1g-dev
 
-      - name: Install official SCIP 10.0.3 release
+      - name: Install and probe official SCIP 10.0.3 release
         run: |
           curl -L --fail --retry 3 -o scip.tgz "$SCIP_URL"
           test "$(sha256sum scip.tgz | cut -d' ' -f1)" = "$SCIP_TGZ_SHA256"
@@ -60,10 +60,12 @@ jobs:
           SCIP_BIN="$(find scipoptsuite-10.0.3 -type f -name scip -perm -111 | head -1)"
           test -n "$SCIP_BIN"
           echo "$SCIP_BIN" > scip_binary.txt
-          "$SCIP_BIN" -c 'display parameters' -c quit > exact_results/scip_parameters.txt 2>&1 || true
-          grep -q 'exact/enable' exact_results/scip_parameters.txt
-          grep -q 'certificate/filename' exact_results/scip_parameters.txt
           "$SCIP_BIN" -v > exact_results/scip_version.txt 2>&1 || true
+          "$SCIP_BIN" -c 'set exact enable TRUE' -c 'set certificate filename /tmp/scip-preflight.vipr' -c quit > exact_results/scip_preflight.txt 2>&1
+          if grep -Eiq 'unknown parameter|invalid parameter|not a valid parameter' exact_results/scip_preflight.txt; then
+            cat exact_results/scip_preflight.txt
+            exit 1
+          fi
           sha256sum "$SCIP_BIN" scip.tgz > exact_results/scip_binary_sha256.txt
 
       - name: Build pinned VIPR checker
