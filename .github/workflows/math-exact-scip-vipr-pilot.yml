@@ -78,7 +78,7 @@ jobs:
           test "$(cat exact_results/vipr_commit.txt)" = "$VIPR_COMMIT"
           sha256sum vipr/build/viprchk > exact_results/viprchk_sha256.txt
 
-      - name: Run exact SCIP/VIPR hard regression
+      - name: Run exact SCIP and cold-check emitted VIPR certificate
         run: |
           SCIP_BIN="$(cat scip_binary.txt)"
           mkdir -p exact_results/model_352
@@ -95,8 +95,16 @@ jobs:
           EOF
           "$SCIP_BIN" -b exact_results/model_352/scip.set > exact_results/model_352/scip.stdout 2> exact_results/model_352/scip.stderr
           grep -Eiq 'problem is solved \[infeasible\]|SCIP Status[[:space:]]*:[[:space:]]*problem is solved \[infeasible\]' exact_results/model_352/scip.stdout
-          test -s exact_results/model_352/proof.vipr
-          vipr/build/viprchk exact_results/model_352/proof.vipr > exact_results/model_352/viprchk.stdout 2> exact_results/model_352/viprchk.stderr
+          if test -s exact_results/model_352/proof.vipr; then
+            PROOF=exact_results/model_352/proof.vipr
+          elif test -s exact_results/model_352/proof.vipr_ori; then
+            PROOF=exact_results/model_352/proof.vipr_ori
+          else
+            echo 'SCIP reported infeasible but emitted no VIPR payload' >&2
+            exit 1
+          fi
+          echo "$PROOF" > exact_results/model_352/proof_path.txt
+          vipr/build/viprchk "$PROOF" > exact_results/model_352/viprchk.stdout 2> exact_results/model_352/viprchk.stderr
           echo CERTIFIED_UNSAT > exact_results/model_352/mathematical_status.txt
           sha256sum exact_results/model_352/* > exact_results/model_352/SHA256SUMS
           echo MODEL_352_EXACT_SCIP_VIPR_REGRESSION_PASS
@@ -108,7 +116,10 @@ jobs:
           import hashlib,json
           from pathlib import Path
           def sh(p): return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
-          out={'schema':'rank5_exact_scip_vipr_model352_regression_v1','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('exact_models/model_352.lp')),'proof_exists':Path('exact_results/model_352/proof.vipr').exists(),'proof_sha256':sh(Path('exact_results/model_352/proof.vipr')),'status':Path('exact_results/model_352/mathematical_status.txt').read_text().strip() if Path('exact_results/model_352/mathematical_status.txt').exists() else 'NOT_REACHED','checker_stdout_sha256':sh(Path('exact_results/model_352/viprchk.stdout'))}
+          p1=Path('exact_results/model_352/proof.vipr')
+          p2=Path('exact_results/model_352/proof.vipr_ori')
+          proof=p1 if p1.exists() else p2
+          out={'schema':'rank5_exact_scip_vipr_model352_regression_v2','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('exact_models/model_352.lp')),'proof_file':str(proof) if proof.exists() else None,'proof_exists':proof.exists(),'proof_sha256':sh(proof),'vipr_commit':Path('exact_results/vipr_commit.txt').read_text().strip() if Path('exact_results/vipr_commit.txt').exists() else None,'checker_returncode':0 if Path('exact_results/model_352/mathematical_status.txt').exists() else None,'status':Path('exact_results/model_352/mathematical_status.txt').read_text().strip() if Path('exact_results/model_352/mathematical_status.txt').exists() else 'NOT_REACHED','checker_stdout_sha256':sh(Path('exact_results/model_352/viprchk.stdout'))}
           Path('exact_results/summary.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
           PY
           find exact_results -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > exact_results/SHA256SUMS
@@ -117,7 +128,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RANK5_EXACT_SCIP_VIPR_MODEL352_REGRESSION_V1
+          name: RANK5_EXACT_SCIP_VIPR_MODEL352_REGRESSION_V2
           path: exact_results
           compression-level: 0
           retention-days: 30
