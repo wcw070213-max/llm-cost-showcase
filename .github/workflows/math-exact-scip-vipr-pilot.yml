@@ -1,4 +1,4 @@
-name: Math exact SCIP VIPR original-model regression
+name: Math exact SCIP VIPR queue pilot
 
 on:
   pull_request:
@@ -11,136 +11,19 @@ on:
 permissions:
   contents: read
 
-env:
-  SCIP_URL: https://github.com/scipopt/scip/releases/download/v10.0.3/scipoptsuite-10.0.3-glibc2_28-amd64.tgz
-  SCIP_TGZ_SHA256: ddbb7129bdb83f8f70ed26391d206fd1658139e44c7c7fd7d73a1e4cefbca94f
-  VIPR_COMMIT: 30f2951d1e90e47afa821bdd1b12b82246656c42
-
 jobs:
-  exact-regression:
+  exact-pilot:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
-
-      - name: Reassemble and verify frozen model 352
-        run: |
-          mkdir -p exact_models exact_results
-          cat > chunk_sha256.txt <<'EOF'
-          2817a9c6aaf3d55002fe0fbfc22ba4b430556793b3f577223b70ffdcff924ef4  math_exact/models/chunks/model_352.part00
-          ef49abe0d3155162dcd0e70c71b1eb0b743a5d65d0ee7e90df0da159e0c20283  math_exact/models/chunks/model_352.part01
-          3ba870ef4160a397602c5fd6b7257b1d891d1e01f9770a58cd7274f7d1cfa53e  math_exact/models/chunks/model_352.part02
-          f8c3c8ab7f8db54173f22894cb0c4010f48a68ae0dbeabb14ae87a8914caae3c  math_exact/models/chunks/model_352.part03
-          28e5f5d4048992364474c362ef2917c0c3e78d4d87ff3f5d4d89eb0690b2c0bf  math_exact/models/chunks/model_352.part04
-          2674787a21e20fe66743ec23f83113a28a3ec9b53f413d02649fc61f696752c7  math_exact/models/chunks/model_352.part05
-          d5a0d04fc171ff3772918b6c0e144d56de65f315f1e97ab83352153ed4151e5b  math_exact/models/chunks/model_352.part06
-          445a273fcf08fbc97808cd647dfb6fd4101e5b90113454470c35de8471373294  math_exact/models/chunks/model_352.part07
-          EOF
-          sha256sum -c chunk_sha256.txt
-          cat math_exact/models/chunks/model_352.part* > exact_models/model_352.lp.xz.b64
-          test "$(sha256sum exact_models/model_352.lp.xz.b64 | cut -d' ' -f1)" = "af496c94d9930578e119a9e6d07c2338d2fd3b17ef37219bf4048003d09c20de"
-          base64 -d exact_models/model_352.lp.xz.b64 > exact_models/model_352.lp.xz
-          test "$(sha256sum exact_models/model_352.lp.xz | cut -d' ' -f1)" = "e82ce3c3d1dbcfa8f1ef54e7cda3f5a3fe4a316a683774e128371af97423b019"
-          xz -t exact_models/model_352.lp.xz
-          xz -dc exact_models/model_352.lp.xz > exact_models/model_352.lp
-          test "$(sha256sum exact_models/model_352.lp | cut -d' ' -f1)" = "1d549df8d1c5b46746fdaa569cf3dccbf71667211afc4a53a10bd1803e3ddb15"
-          grep -q 'model_id=352 profile=R5_RHO4_TAU3 model_sha256=116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3' exact_models/model_352.lp
-          sha256sum exact_models/* chunk_sha256.txt > exact_results/model_input_sha256.txt
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build libgmp-dev libboost-all-dev zlib1g-dev
-
-      - name: Install and probe official SCIP 10.0.3 release
-        run: |
-          curl -L --fail --retry 3 -o scip.tgz "$SCIP_URL"
-          test "$(sha256sum scip.tgz | cut -d' ' -f1)" = "$SCIP_TGZ_SHA256"
-          tar -xzf scip.tgz
-          SCIP_BIN="$(find scipoptsuite-10.0.3 -type f -name scip -perm -111 | head -1)"
-          test -n "$SCIP_BIN"
-          echo "$SCIP_BIN" > scip_binary.txt
-          "$SCIP_BIN" -v > exact_results/scip_version.txt 2>&1 || true
-          "$SCIP_BIN" -c 'set exact enable TRUE' -c 'set presolving emphasis off' -c 'set separating emphasis off' -c 'set certificate filename /tmp/scip-preflight.vipr' -c quit > exact_results/scip_preflight.txt 2>&1
-          if grep -Eiq 'unknown parameter|invalid parameter|not a valid parameter' exact_results/scip_preflight.txt; then
-            cat exact_results/scip_preflight.txt
-            exit 1
-          fi
-          sha256sum "$SCIP_BIN" scip.tgz > exact_results/scip_binary_sha256.txt
-
-      - name: Build pinned VIPR checker
-        run: |
-          git clone https://github.com/scipopt/vipr.git vipr
-          git -C vipr checkout "$VIPR_COMMIT"
-          cmake -S vipr/code -B vipr/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DVIPRCOMP=OFF
-          cmake --build vipr/build --target viprchk -j 2
-          git -C vipr rev-parse HEAD > exact_results/vipr_commit.txt
-          test "$(cat exact_results/vipr_commit.txt)" = "$VIPR_COMMIT"
-          sha256sum vipr/build/viprchk > exact_results/viprchk_sha256.txt
-
-      - name: Run exact SCIP/VIPR proof for the original model
-        run: |
-          SCIP_BIN="$(cat scip_binary.txt)"
-          mkdir -p exact_results/model_352
-          cat > exact_results/model_352/scip.set <<'EOF'
-          set exact enable TRUE
-          set presolving emphasis off
-          set separating emphasis off
-          set conflict enable FALSE
-          set limits time 600
-          set certificate filename exact_results/model_352/proof.vipr
-          read exact_models/model_352.lp
-          optimize
-          display statistics
-          quit
-          EOF
-          set +e
-          timeout 750 "$SCIP_BIN" -b exact_results/model_352/scip.set > exact_results/model_352/scip.stdout 2> exact_results/model_352/scip.stderr
-          rc=$?
-          set -e
-          echo "$rc" > exact_results/model_352/scip_returncode.txt
-          grep -Eiq 'problem is solved \[infeasible\]|SCIP Status[[:space:]]*:[[:space:]]*problem is solved \[infeasible\]' exact_results/model_352/scip.stdout
-          if test -s exact_results/model_352/proof.vipr; then
-            PROOF=exact_results/model_352/proof.vipr
-          elif test -s exact_results/model_352/proof.vipr_ori; then
-            PROOF=exact_results/model_352/proof.vipr_ori
-          else
-            echo 'SCIP reported infeasible but emitted no VIPR payload' >&2
-            exit 1
-          fi
-          echo "$PROOF" > exact_results/model_352/proof_path.txt
-          grep -Eq '^DER [1-9][0-9]*$' "$PROOF"
-          if grep -q '^RTP range -inf inf$' "$PROOF"; then
-            echo 'Refusing tautological VIPR target range' >&2
-            exit 1
-          fi
-          vipr/build/viprchk "$PROOF" > exact_results/model_352/viprchk.stdout 2> exact_results/model_352/viprchk.stderr
-          echo CERTIFIED_UNSAT > exact_results/model_352/mathematical_status.txt
-          sha256sum exact_results/model_352/* > exact_results/model_352/SHA256SUMS
-          echo MODEL_352_ORIGINAL_EXACT_SCIP_VIPR_REGRESSION_PASS
-
-      - name: Create summary
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import hashlib,json,re
-          from pathlib import Path
-          def sh(p): return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
-          p1=Path('exact_results/model_352/proof.vipr')
-          p2=Path('exact_results/model_352/proof.vipr_ori')
-          proof=p1 if p1.exists() else p2
-          txt=proof.read_text(errors='replace') if proof.exists() else ''
-          m=re.search(r'^DER\s+(\d+)\s*$',txt,re.M)
-          out={'schema':'rank5_exact_scip_vipr_model352_original_regression_v1','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('exact_models/model_352.lp')),'presolving_disabled':True,'separation_disabled':True,'proof_file':str(proof) if proof.exists() else None,'proof_exists':proof.exists(),'proof_sha256':sh(proof),'proof_derivations':int(m.group(1)) if m else None,'proof_target_tautological':bool(re.search(r'^RTP range -inf inf$',txt,re.M)),'vipr_commit':Path('exact_results/vipr_commit.txt').read_text().strip() if Path('exact_results/vipr_commit.txt').exists() else None,'status':Path('exact_results/model_352/mathematical_status.txt').read_text().strip() if Path('exact_results/model_352/mathematical_status.txt').exists() else 'NOT_REACHED','checker_stdout_sha256':sh(Path('exact_results/model_352/viprchk.stdout'))}
-          Path('exact_results/summary.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
-          PY
-          find exact_results -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > exact_results/SHA256SUMS
-
-      - name: Upload original-model exact regression artifact
+      - name: Run frozen original-model exact SCIP/VIPR pilot
+        run: bash math_exact/run_model589_exact_pilot.sh
+      - name: Upload exact proof pilot
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RANK5_EXACT_SCIP_VIPR_MODEL352_ORIGINAL_REGRESSION_V1
+          name: RANK5_EXACT_SCIP_VIPR_MODEL589_PILOT_V1
           path: exact_results
           compression-level: 0
           retention-days: 30
