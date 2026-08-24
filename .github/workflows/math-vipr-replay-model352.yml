@@ -1,4 +1,4 @@
-name: Math VIPR cold replay model352
+name: Math VIPR cold replay model589
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 env:
-  SOURCE_RUN_ID: 32765435670
+  SOURCE_RUN_ID: 32767805465
   VIPR_COMMIT: 30f2951d1e90e47afa821bdd1b12b82246656c42
 
 jobs:
@@ -23,43 +23,64 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reassemble frozen model 352 input
+      - name: Reassemble frozen model589 input
         run: |
-          mkdir -p replay/model_352
-          cat > chunk_sha256.txt <<'EOF'
-          2817a9c6aaf3d55002fe0fbfc22ba4b430556793b3f577223b70ffdcff924ef4  math_exact/models/chunks/model_352.part00
-          ef49abe0d3155162dcd0e70c71b1eb0b743a5d65d0ee7e90df0da159e0c20283  math_exact/models/chunks/model_352.part01
-          3ba870ef4160a397602c5fd6b7257b1d891d1e01f9770a58cd7274f7d1cfa53e  math_exact/models/chunks/model_352.part02
-          f8c3c8ab7f8db54173f22894cb0c4010f48a68ae0dbeabb14ae87a8914caae3c  math_exact/models/chunks/model_352.part03
-          28e5f5d4048992364474c362ef2917c0c3e78d4d87ff3f5d4d89eb0690b2c0bf  math_exact/models/chunks/model_352.part04
-          2674787a21e20fe66743ec23f83113a28a3ec9b53f413d02649fc61f696752c7  math_exact/models/chunks/model_352.part05
-          d5a0d04fc171ff3772918b6c0e144d56de65f315f1e97ab83352153ed4151e5b  math_exact/models/chunks/model_352.part06
-          445a273fcf08fbc97808cd647dfb6fd4101e5b90113454470c35de8471373294  math_exact/models/chunks/model_352.part07
+          mkdir -p replay/model_589
+          cat > chunks_589.sha256 <<'EOF'
+          b9d876d9a6b9b6e94f896fe22684481ab969884842123118f442b1d681edda2b  math_exact/models/chunks/model_589.part00
+          421d6814ce2c013d4d9a882cf514fe2021c703d1a5b472ed5dbc995b2f5d5a98  math_exact/models/chunks/model_589.part01
+          abf46699bbdc9cdbb91b5ce583a3ebf850a3e507451d0fc8dbc323c6c4811597  math_exact/models/chunks/model_589.part02
+          d7baebae0ca7ed3ff9e9306ca1a66703df430e0bfb3a3eb0f24edd2875cff871  math_exact/models/chunks/model_589.part03
+          220c62a408d191b58e8438ca49fd59f7576c15e2cacf3a720deed94b30bbaddc  math_exact/models/chunks/model_589.part04
+          c0494c2f7d84895363608d6757ab369582e533c9856c22217cc1aee4cbe9ffce  math_exact/models/chunks/model_589.part05
+          044d5b8ed6dd3b5961cdecfd3123842b0fb7a7eb931b46777435efb170648822  math_exact/models/chunks/model_589.part06
+          8d833ae9fd5ca0c37d18ec450ffd7679158993083aa1b31477d7581a2e7841bf  math_exact/models/chunks/model_589.part07
           EOF
-          sha256sum -c chunk_sha256.txt
-          cat math_exact/models/chunks/model_352.part* > replay/model_352/model.lp.xz.b64
-          test "$(sha256sum replay/model_352/model.lp.xz.b64 | cut -d' ' -f1)" = "af496c94d9930578e119a9e6d07c2338d2fd3b17ef37219bf4048003d09c20de"
-          base64 -d replay/model_352/model.lp.xz.b64 > replay/model_352/model.lp.xz
-          test "$(sha256sum replay/model_352/model.lp.xz | cut -d' ' -f1)" = "e82ce3c3d1dbcfa8f1ef54e7cda3f5a3fe4a316a683774e128371af97423b019"
-          xz -dc replay/model_352/model.lp.xz > replay/model_352/model.lp
-          test "$(sha256sum replay/model_352/model.lp | cut -d' ' -f1)" = "1d549df8d1c5b46746fdaa569cf3dccbf71667211afc4a53a10bd1803e3ddb15"
+          sha256sum -c chunks_589.sha256
+          cat math_exact/models/chunks/model_589.part* > replay/model_589/model.lp.xz.b64
+          test "$(sha256sum replay/model_589/model.lp.xz.b64 | cut -d' ' -f1)" = "0e162cdfc5a67f68914b46354d875669944e399ea9d646f423f9651e5798cab9"
+          base64 -d replay/model_589/model.lp.xz.b64 > replay/model_589/model.lp.xz
+          test "$(sha256sum replay/model_589/model.lp.xz | cut -d' ' -f1)" = "e884d61f18bf02d7fdb61f4b759ff34703500e1600771eb40a6cad37d8643853"
+          xz -t replay/model_589/model.lp.xz
+          xz -dc replay/model_589/model.lp.xz > replay/model_589/model.lp
+          test "$(sha256sum replay/model_589/model.lp | cut -d' ' -f1)" = "a2c5f1257a5330ed8c81837ad14a3eb204ac8c32d15e94d1b94e932c95fa18e1"
+          grep -q 'model_id=589 profile=R5_RHO4_TAU3 model_sha256=d7e26cb20c2629ecd7b0b148f05977616e084951db5d19a8932855f3cd92c57b' replay/model_589/model.lp
 
-      - name: Download prior exact SCIP raw certificate
+      - name: Download prior exact SCIP model589 artifact
         uses: actions/download-artifact@v4
         with:
-          name: RANK5_EXACT_SCIP_VIPR_MODEL352_REGRESSION_V1
+          name: RANK5_EXACT_SCIP_VIPR_MODEL589_PILOT_V1
           path: prior
           github-token: ${{ github.token }}
           run-id: ${{ env.SOURCE_RUN_ID }}
 
-      - name: Verify raw certificate identity
+      - name: Verify exact SCIP artifact identity and proof target
         run: |
-          test -s prior/model_352/proof.vipr_ori
-          test "$(sha256sum prior/model_352/proof.vipr_ori | cut -d' ' -f1)" = "56c7c2887c2121511b86d9b426d1a405dadbb139193d85baa2d7924beeb41ef3"
-          cp prior/model_352/proof.vipr_ori replay/model_352/proof.vipr_ori
-          cp prior/model_352/scip.stdout replay/model_352/scip.stdout
-          grep -q 'SCIP Status        : problem is solved \[infeasible\]' replay/model_352/scip.stdout
-          grep -q 'closing certificate file' replay/model_352/scip.stdout
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('prior/summary.json').read_text())
+          q=d['queue_pilot']
+          assert q['model_id']==589
+          assert q['model_sha256']=='d7e26cb20c2629ecd7b0b148f05977616e084951db5d19a8932855f3cd92c57b'
+          assert q['lp_sha256']=='a2c5f1257a5330ed8c81837ad14a3eb204ac8c32d15e94d1b94e932c95fa18e1'
+          assert q['status']=='CERTIFIED_UNSAT'
+          assert q['proof_sha256']=='1b6177774a4b0c7b13c5d70582c96efedaf1676fccdbe68cb4963134f81f123b'
+          assert q['proof_derivations']==803
+          assert q['proof_target_infeas'] is True
+          assert q['proof_target_tautological'] is False
+          assert d['presolving_disabled'] is True
+          assert d['separation_disabled'] is True
+          PY
+          test -s prior/model_589/proof.vipr
+          test "$(sha256sum prior/model_589/proof.vipr | cut -d' ' -f1)" = "1b6177774a4b0c7b13c5d70582c96efedaf1676fccdbe68cb4963134f81f123b"
+          grep -q '^RTP infeas$' prior/model_589/proof.vipr
+          grep -q '^DER 803$' prior/model_589/proof.vipr
+          ! grep -q '^RTP range -inf inf$' prior/model_589/proof.vipr
+          cp prior/model_589/proof.vipr replay/model_589/proof.vipr
+          cp prior/model_589/scip.stdout replay/model_589/scip.stdout
+          grep -q 'SCIP Status        : problem is solved \[infeasible\]' replay/model_589/scip.stdout
+          grep -q 'presolving (0 rounds' replay/model_589/scip.stdout
 
       - name: Build pinned VIPR checker
         run: |
@@ -73,19 +94,20 @@ jobs:
           test "$(cat replay/vipr_commit.txt)" = "$VIPR_COMMIT"
           sha256sum vipr/build/viprchk > replay/viprchk_sha256.txt
 
-      - name: Cold replay raw VIPR certificate
+      - name: Cold replay model589 VIPR certificate
         run: |
           set +e
-          vipr/build/viprchk replay/model_352/proof.vipr_ori > replay/model_352/viprchk.stdout 2> replay/model_352/viprchk.stderr
+          vipr/build/viprchk replay/model_589/proof.vipr > replay/model_589/viprchk.stdout 2> replay/model_589/viprchk.stderr
           rc=$?
           set -e
-          echo "$rc" > replay/model_352/viprchk_returncode.txt
-          cat replay/model_352/viprchk.stdout
-          cat replay/model_352/viprchk.stderr
+          echo "$rc" > replay/model_589/viprchk_returncode.txt
+          cat replay/model_589/viprchk.stdout
+          cat replay/model_589/viprchk.stderr
           test "$rc" = 0
-          echo CERTIFIED_UNSAT > replay/model_352/mathematical_status.txt
-          sha256sum replay/model_352/* > replay/model_352/SHA256SUMS
-          echo MODEL_352_EXACT_SCIP_VIPR_COLD_REPLAY_PASS
+          grep -q 'Successfully verified infeasibility' replay/model_589/viprchk.stdout
+          echo CERTIFIED_UNSAT > replay/model_589/mathematical_status.txt
+          sha256sum replay/model_589/* > replay/model_589/SHA256SUMS
+          echo MODEL_589_EXACT_SCIP_VIPR_COLD_REPLAY_PASS
 
       - name: Create replay summary
         if: always()
@@ -94,16 +116,16 @@ jobs:
           import hashlib,json
           from pathlib import Path
           def sh(p): return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
-          d={'schema':'rank5_model352_exact_scip_vipr_cold_replay_v1','model_id':352,'model_sha256':'116f2c2dc96447c74b617285bbb0c757c8434f0f08a89dcc04ebce299f937aa3','lp_sha256':sh(Path('replay/model_352/model.lp')),'proof_sha256':sh(Path('replay/model_352/proof.vipr_ori')),'vipr_commit':Path('replay/vipr_commit.txt').read_text().strip() if Path('replay/vipr_commit.txt').exists() else None,'checker_returncode':int(Path('replay/model_352/viprchk_returncode.txt').read_text()) if Path('replay/model_352/viprchk_returncode.txt').exists() else None,'status':Path('replay/model_352/mathematical_status.txt').read_text().strip() if Path('replay/model_352/mathematical_status.txt').exists() else 'NOT_REACHED'}
+          d={'schema':'rank5_model589_exact_scip_vipr_cold_replay_v1','model_id':589,'model_sha256':'d7e26cb20c2629ecd7b0b148f05977616e084951db5d19a8932855f3cd92c57b','lp_sha256':sh(Path('replay/model_589/model.lp')),'proof_sha256':sh(Path('replay/model_589/proof.vipr')),'proof_derivations':803,'proof_target':'infeas','vipr_commit':Path('replay/vipr_commit.txt').read_text().strip() if Path('replay/vipr_commit.txt').exists() else None,'checker_returncode':int(Path('replay/model_589/viprchk_returncode.txt').read_text()) if Path('replay/model_589/viprchk_returncode.txt').exists() else None,'status':Path('replay/model_589/mathematical_status.txt').read_text().strip() if Path('replay/model_589/mathematical_status.txt').exists() else 'NOT_REACHED'}
           Path('replay/summary.json').write_text(json.dumps(d,indent=2,sort_keys=True)+'\n')
           PY
           find replay -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > replay/SHA256SUMS
 
-      - name: Upload cold replay artifact
+      - name: Upload model589 cold replay artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RANK5_MODEL352_EXACT_SCIP_VIPR_COLD_REPLAY_V1
+          name: RANK5_MODEL589_EXACT_SCIP_VIPR_COLD_REPLAY_V1
           path: replay
           compression-level: 0
           retention-days: 30
