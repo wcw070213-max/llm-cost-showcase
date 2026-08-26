@@ -1,0 +1,159 @@
+name: R46 FULL36 LRAT pipeline
+
+on:
+  push:
+    branches: [r46-full36-lrat-pipeline-20260826]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-lrat-pipeline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependency
+        run: python -m pip install --disable-pip-version-check 'networkx==3.4.2'
+
+      - name: Download authoritative R(3,6;17) catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/evidence
+          curl -L --fail --retry 4 --retry-delay 2 \
+            'https://huggingface.co/datasets/linxy/RamseyGraph/resolve/main/data/r36_17.g6?download=true' \
+            -o work/r36_17.g6
+          echo '3286c5366ddc70f349c3f7e798d7acbc79dc026c7abe0c8f406cad41ca990361  work/r36_17.g6' | sha256sum -c -
+
+      - name: Regenerate exact FULL36 N00 root and nontrivial degree cube
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/r46_full36_lrat_pipeline.py --g6 work/r36_17.g6 --out work/evidence | tee work/evidence/generator_stdout.json
+          echo 'a9210d8ab43fa25877da15c6279e96d93f8433289b50798981a24156e4003cb9  work/evidence/FULL36_D17_N00.proof.cnf' | sha256sum -c -
+          echo '99f3bb1bb04d978fa950be799dc9fdd0e211dda8969e4e6207daef820bfbb62c  work/evidence/FULL36_D17_N00_N0_UPPER12_VIOLATION_CUBE.cnf' | sha256sum -c -
+
+      - name: Build pinned solver and independent LRAT checkers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/tools
+          git clone --quiet https://github.com/arminbiere/cadical.git work/tools/cadical
+          git -C work/tools/cadical checkout --quiet c60730422e758ef1cebe7aeddf2dda31c996bf04
+          (cd work/tools/cadical && ./configure -q && make -j2)
+
+          git clone --quiet https://github.com/arminbiere/lrat-trim.git work/tools/lrat-trim
+          git -C work/tools/lrat-trim checkout --quiet b30f400f4ee5c32b77ee566a7c006081b521534f
+          (cd work/tools/lrat-trim && ./configure && make -j2)
+
+          git clone --quiet https://github.com/tanyongkiam/cake_lpr.git work/tools/cake_lpr
+          git -C work/tools/cake_lpr checkout --quiet a36874a8b750b43fe4b385b8ddbf5b033e46a3fa
+          (cd work/tools/cake_lpr && make -j2)
+
+          {
+            echo 'cadical_commit=c60730422e758ef1cebe7aeddf2dda31c996bf04'
+            echo 'lrat_trim_commit=b30f400f4ee5c32b77ee566a7c006081b521534f'
+            echo 'cake_lpr_commit=a36874a8b750b43fe4b385b8ddbf5b033e46a3fa'
+            work/tools/cadical/build/cadical --version | sed 's/^/cadical_version=/'
+            sha256sum work/tools/cadical/build/cadical work/tools/lrat-trim/lrat-trim work/tools/cake_lpr/cake_lpr
+          } | tee work/evidence/tool_versions_and_hashes.txt
+
+      - name: Produce deterministic ASCII LRAT proof with CaDiCaL
+        shell: bash
+        run: |
+          set -euo pipefail
+          CNF=work/evidence/FULL36_D17_N00_N0_UPPER12_VIOLATION_CUBE.cnf
+          for n in 1 2; do
+            set +e
+            work/tools/cadical/build/cadical --no-binary --lrat -q "$CNF" "work/evidence/cadical_run${n}.lrat" > "work/evidence/cadical_run${n}.log" 2>&1
+            rc=$?
+            set -e
+            echo "$rc" > "work/evidence/cadical_run${n}.exitcode"
+            test "$rc" -eq 20
+            grep -q 's UNSATISFIABLE' "work/evidence/cadical_run${n}.log"
+            test -s "work/evidence/cadical_run${n}.lrat"
+          done
+          cmp work/evidence/cadical_run1.lrat work/evidence/cadical_run2.lrat
+          cp work/evidence/cadical_run1.lrat work/evidence/FULL36_D17_N00_degree_cube.lrat
+          sha256sum work/evidence/cadical_run1.lrat work/evidence/cadical_run2.lrat | tee work/evidence/proof_determinism_sha256.txt
+
+      - name: Check LRAT with lrat-trim
+        shell: bash
+        run: |
+          set -euo pipefail
+          CNF=work/evidence/FULL36_D17_N00_N0_UPPER12_VIOLATION_CUBE.cnf
+          PROOF=work/evidence/FULL36_D17_N00_degree_cube.lrat
+          work/tools/lrat-trim/lrat-trim "$CNF" "$PROOF" > work/evidence/lrat_trim_checker.log 2>&1
+          grep -Eqi 'verified|succeeded|unsat' work/evidence/lrat_trim_checker.log
+
+      - name: Check LRAT with formally verified CakeML checker
+        shell: bash
+        run: |
+          set -euo pipefail
+          CNF=work/evidence/FULL36_D17_N00_N0_UPPER12_VIOLATION_CUBE.cnf
+          PROOF=work/evidence/FULL36_D17_N00_degree_cube.lrat
+          work/tools/cake_lpr/cake_lpr --CML_HEAP_SIZE=2048 --CML_STACK_SIZE=256 "$CNF" "$PROOF" > work/evidence/cake_lpr_checker.log 2> work/evidence/cake_lpr_checker.err
+          grep -q 's VERIFIED UNSAT' work/evidence/cake_lpr_checker.log
+          test ! -s work/evidence/cake_lpr_checker.err
+
+      - name: Build final manifest and cold-replay script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tools/r46_full36_lrat_pipeline.py work/evidence/
+          cat > work/evidence/cold_replay.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          CNF=FULL36_D17_N00_N0_UPPER12_VIOLATION_CUBE.cnf
+          PROOF=FULL36_D17_N00_degree_cube.lrat
+          : "${LRAT_TRIM:?set LRAT_TRIM to pinned lrat-trim executable}"
+          : "${CAKE_LPR:?set CAKE_LPR to pinned cake_lpr executable}"
+          "$LRAT_TRIM" "$CNF" "$PROOF" > replay_lrat_trim.log 2>&1
+          "$CAKE_LPR" --CML_HEAP_SIZE=2048 --CML_STACK_SIZE=256 "$CNF" "$PROOF" > replay_cake_lpr.log 2> replay_cake_lpr.err
+          grep -q 's VERIFIED UNSAT' replay_cake_lpr.log
+          test ! -s replay_cake_lpr.err
+          SH
+          chmod +x work/evidence/cold_replay.sh
+          python - <<'PY'
+          import hashlib,json,pathlib,re
+          d=pathlib.Path('work/evidence')
+          def sha(p): return hashlib.sha256((d/p).read_bytes()).hexdigest()
+          meta=json.loads((d/'cube_metadata.json').read_text())
+          proof='FULL36_D17_N00_degree_cube.lrat'
+          logs={p.name:p.read_text(errors='replace') for p in [d/'lrat_trim_checker.log',d/'cake_lpr_checker.log',d/'cadical_run1.log']}
+          manifest={
+            'phase':'FULL36_D17_SOLVER_LRAT_DUAL_CHECKER_COLD_START_V1',
+            'verdict':'PIPELINE_VALIDATED_ON_NONTRIVIAL_DEGREE_CUBE',
+            'mathematical_scope':'Only the stated cube is certified UNSAT; the FULL36_D17_N00 root and d=17 layer remain OPEN.',
+            'root':{'id':'FULL36_D17_N00','sha256':meta['root_sha256'],'variables':meta['root_variables'],'clauses':meta['root_clauses']},
+            'cube':{'sha256':meta['cube_sha256'],'variables':meta['cube_variables'],'clauses':meta['cube_clauses'],'assumptions':meta['cube_assumptions'],'semantics':meta['cube_semantics']},
+            'proof':{'format':'ASCII LRAT','sha256':sha(proof),'bytes':(d/proof).stat().st_size,'deterministic_two_run_byte_identity':(d/'cadical_run1.lrat').read_bytes()==(d/'cadical_run2.lrat').read_bytes()},
+            'producer':{'name':'CaDiCaL','commit':'c60730422e758ef1cebe7aeddf2dda31c996bf04','exit_code':int((d/'cadical_run1.exitcode').read_text())},
+            'checker_1':{'name':'lrat-trim','commit':'b30f400f4ee5c32b77ee566a7c006081b521534f','accepted':True},
+            'checker_2':{'name':'cake_lpr (CakeML verified)','commit':'a36874a8b750b43fe4b385b8ddbf5b033e46a3fa','accepted':True},
+            'file_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(d.iterdir()) if p.is_file()},
+            'log_excerpts':{k:v[-2000:] for k,v in logs.items()}
+          }
+          (d/'pipeline_manifest.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
+          with (d/'SHA256SUMS.txt').open('w') as f:
+            for p in sorted(d.iterdir()):
+              if p.is_file() and p.name!='SHA256SUMS.txt': f.write(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n')
+          print(json.dumps(manifest,sort_keys=True))
+          PY
+
+      - name: Upload proof-pipeline evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: r46-full36-lrat-pipeline-evidence
+          path: work/evidence
+          if-no-files-found: error
+          retention-days: 90
