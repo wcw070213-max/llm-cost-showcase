@@ -74,7 +74,7 @@ jobs:
           CNF=work/evidence/FULL36_D17_N00_N0_UPPER12_VIOLATION_CUBE.cnf
           for n in 1 2; do
             set +e
-            work/tools/cadical/build/cadical --no-binary --lrat -q "$CNF" "work/evidence/cadical_run${n}.lrat" > "work/evidence/cadical_run${n}.log" 2>&1
+            work/tools/cadical/build/cadical -q "$CNF" --check --lrat "work/evidence/cadical_run${n}.lrat" > "work/evidence/cadical_run${n}.log" 2>&1
             rc=$?
             set -e
             echo "$rc" > "work/evidence/cadical_run${n}.exitcode"
@@ -92,8 +92,12 @@ jobs:
           set -euo pipefail
           CNF=work/evidence/FULL36_D17_N00_N0_UPPER12_VIOLATION_CUBE.cnf
           PROOF=work/evidence/FULL36_D17_N00_degree_cube.lrat
+          set +e
           work/tools/lrat-trim/lrat-trim "$CNF" "$PROOF" > work/evidence/lrat_trim_checker.log 2>&1
-          grep -Eqi 'verified|succeeded|unsat' work/evidence/lrat_trim_checker.log
+          rc=$?
+          set -e
+          echo "$rc" > work/evidence/lrat_trim_checker.exitcode
+          test "$rc" -eq 20
 
       - name: Check LRAT with formally verified CakeML checker
         shell: bash
@@ -117,14 +121,18 @@ jobs:
           PROOF=FULL36_D17_N00_degree_cube.lrat
           : "${LRAT_TRIM:?set LRAT_TRIM to pinned lrat-trim executable}"
           : "${CAKE_LPR:?set CAKE_LPR to pinned cake_lpr executable}"
+          set +e
           "$LRAT_TRIM" "$CNF" "$PROOF" > replay_lrat_trim.log 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 20
           "$CAKE_LPR" --CML_HEAP_SIZE=2048 --CML_STACK_SIZE=256 "$CNF" "$PROOF" > replay_cake_lpr.log 2> replay_cake_lpr.err
           grep -q 's VERIFIED UNSAT' replay_cake_lpr.log
           test ! -s replay_cake_lpr.err
           SH
           chmod +x work/evidence/cold_replay.sh
           python - <<'PY'
-          import hashlib,json,pathlib,re
+          import hashlib,json,pathlib
           d=pathlib.Path('work/evidence')
           def sha(p): return hashlib.sha256((d/p).read_bytes()).hexdigest()
           meta=json.loads((d/'cube_metadata.json').read_text())
@@ -138,7 +146,7 @@ jobs:
             'cube':{'sha256':meta['cube_sha256'],'variables':meta['cube_variables'],'clauses':meta['cube_clauses'],'assumptions':meta['cube_assumptions'],'semantics':meta['cube_semantics']},
             'proof':{'format':'ASCII LRAT','sha256':sha(proof),'bytes':(d/proof).stat().st_size,'deterministic_two_run_byte_identity':(d/'cadical_run1.lrat').read_bytes()==(d/'cadical_run2.lrat').read_bytes()},
             'producer':{'name':'CaDiCaL','commit':'c60730422e758ef1cebe7aeddf2dda31c996bf04','exit_code':int((d/'cadical_run1.exitcode').read_text())},
-            'checker_1':{'name':'lrat-trim','commit':'b30f400f4ee5c32b77ee566a7c006081b521534f','accepted':True},
+            'checker_1':{'name':'lrat-trim','commit':'b30f400f4ee5c32b77ee566a7c006081b521534f','exit_code':int((d/'lrat_trim_checker.exitcode').read_text()),'accepted':True},
             'checker_2':{'name':'cake_lpr (CakeML verified)','commit':'a36874a8b750b43fe4b385b8ddbf5b033e46a3fa','accepted':True},
             'file_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(d.iterdir()) if p.is_file()},
             'log_excerpts':{k:v[-2000:] for k,v in logs.items()}
