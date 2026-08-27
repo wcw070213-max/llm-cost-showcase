@@ -1,0 +1,41 @@
+name: Math VIPR cold replay model589 v2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/math-vipr-replay-model589-v2.yml'
+      - 'math_exact/VIPR_REPLAY_MODEL589_V2_TRIGGER.md'
+      - 'math_exact/cold_replay_model589.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_RUN_ID: 32767805465
+
+jobs:
+  cold-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download prior exact SCIP model589 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RANK5_EXACT_SCIP_VIPR_MODEL589_PILOT_V1
+          path: prior
+          github-token: ${{ github.token }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - name: Rebuild checker and cold-replay model589 proof
+        run: bash math_exact/cold_replay_model589.sh
+      - name: Upload model589 cold replay artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RANK5_MODEL589_EXACT_SCIP_VIPR_COLD_REPLAY_V2
+          path: replay
+          compression-level: 0
+          retention-days: 30

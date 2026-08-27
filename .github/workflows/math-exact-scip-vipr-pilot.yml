@@ -1,0 +1,29 @@
+name: Math exact SCIP VIPR queue pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/math-exact-scip-vipr-pilot.yml'
+      - 'math_exact/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run frozen original-model exact SCIP/VIPR pilot
+        run: bash math_exact/run_model589_exact_pilot.sh
+      - name: Upload exact proof pilot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RANK5_EXACT_SCIP_VIPR_MODEL589_PILOT_V1
+          path: exact_results
+          compression-level: 0
+          retention-days: 30
